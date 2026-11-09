@@ -1,0 +1,133 @@
+# configs/config.yaml
+# Cấu hình trung tâm cho SSVEP Ensemble Project
+
+# ── DATASET ──────────────────────────────────────────────────────────────────
+dataset:
+  benchmark:
+    name: "Benchmark"
+    path: "data/raw/benchmark"          # Đặt dataset Tsinghua tại đây
+    n_subjects: 35
+    n_targets: 40
+    n_blocks: 6
+    sfreq: 250                          # Hz
+    trial_duration: 5.0                 # giây (dùng 0.5–4s theo paper)
+    channels: 64
+    # Subset channels chuẩn SSVEP
+    selected_channels: [
+      "Pz", "PO3", "PO4", "POz", "Oz",
+      "O1", "O2", "PO7", "PO8", "P3",
+      "P4", "P7", "P8", "CP1", "CP2"
+    ]
+    n_channels_selected: 9              # Oz, O1, O2, POz, PO3, PO4, PO7, PO8, Pz
+
+  beta:
+    name: "BETA"
+    path: "data/raw/beta"
+    n_subjects: 70
+    n_targets: 40
+    sfreq: 250
+    trial_duration: 2.0
+
+# ── PREPROCESSING ─────────────────────────────────────────────────────────────
+preprocessing:
+  bandpass: [6.0, 90.0]               # Hz
+  notch: 50.0                         # Hz (Vietnam power line)
+  time_window:
+    start: 0.14                       # giây (visual latency)
+    end: 0.64                         # giây → 0.5s window (step 1)
+    # Sau validate: thử 1s, 2s, 4s
+  normalize: "standard"               # standard | minmax | none
+
+# ── FEATURE EXTRACTORS ────────────────────────────────────────────────────────
+# 4 extractors theo handoff doc
+extractors:
+  temporal_cnn:
+    name: "TemporalCNN"
+    params: ~6000                     # ~6K params
+    kernel_sizes: [3, 5, 7]
+    channels: [16, 32, 16]
+    dropout: 0.3
+
+  freq_domain_cnn:
+    name: "FreqDomainCNN"
+    params: ~6000
+    fft_bins: 128
+    channels: [8, 16, 8]
+    dropout: 0.3
+
+  filter_bank_cnn:
+    name: "FilterBankCNN"             # FBCCA-inspired
+    params: ~7000
+    n_filterbanks: 5
+    channels: [8, 16, 8]
+    dropout: 0.3
+
+  spatial_temporal_cnn:
+    name: "SpatialTemporalCNN"
+    params: ~6000
+    spatial_filters: 8
+    temporal_kernel: 25
+    dropout: 0.3
+
+# ── TRAINING ──────────────────────────────────────────────────────────────────
+training:
+  # Phase 1: Individual extractors
+  individual:
+    epochs: 100
+    batch_size: 32                    # Safe với 4GB VRAM
+    lr: 0.001
+    weight_decay: 0.0001
+    scheduler: "cosine"
+    warmup_epochs: 10
+
+  # Phase 2: Ensemble
+  ensemble:
+    epochs: 50
+    batch_size: 16
+    lr: 0.0005
+    # Collaborative distillation
+    distillation_alpha: 0.5           # balance CE vs KD loss
+    temperature: 4.0
+
+  # LOSO cross-validation
+  loso:
+    n_folds: 35                       # leave-one-subject-out
+    seed: 42
+
+# ── SUCCESS CRITERIA (từ handoff doc) ────────────────────────────────────────
+success_criteria:
+  criterion_1_reproduction:
+    eegnet_accuracy: 0.65             # match paper ±2%
+    trca_accuracy: 0.78
+    fbcca_accuracy: 0.72
+
+  criterion_2_individual_extractors:
+    min_accuracy_vs_eegnet: -0.02     # mỗi extractor ≥ EEGNet - 2%
+
+  criterion_3_naive_ensemble:
+    min_improvement_vs_best_single: 0.01   # naive > best single
+
+  criterion_4_collaborative:
+    min_improvement_vs_naive: 0.01    # collaborative > naive +1%
+
+  criterion_5_robustness:
+    graceful_degradation: true        # 3/4 extractors vẫn hoạt động
+
+  criterion_6_final:
+    target_loso_benchmark: 0.88      # 88% LOSO Benchmark
+
+# ── PATHS ────────────────────────────────────────────────────────────────────
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  models: "models"
+  results: "results"
+  checkpoints: "results/checkpoints"
+  logs: "results/logs"
+
+# ── HARDWARE ─────────────────────────────────────────────────────────────────
+hardware:
+  gpu: "cuda"
+  mixed_precision: true               # fp16 để tiết kiệm VRAM trên A2000 4GB
+  num_workers: 4
+  pin_memory: true

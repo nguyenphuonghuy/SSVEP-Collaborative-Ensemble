@@ -1,0 +1,11 @@
+# Raw datasets (download separately, see README)
+data/raw/
+# Training outputs, checkpoints, logs
+results/
+logs/
+*.pt
+*.pth
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

@@ -1,0 +1,53 @@
+#!/bin/bash
+
+PY=${PY:-python}
+PROJ=${PROJ:-$(cd "$(dirname "$0")/.." && pwd)}
+export CUDA_MPS_PIPE_DIRECTORY=/dev/null    # BAT BUOC - fix MPS treo tren compute node
+export FI_PROVIDER=tcp    # BAT BUOC - tranh "import torch" bi treo 55-185s cho dich vu dam phan CXI (Slingshot) tren node ai01
+LOG=$PROJ/logs/run_ce_baseline_$(date +%Y%m%d_%H%M%S).log
+mkdir -p $PROJ/logs
+cd $PROJ
+export PYTHONUNBUFFERED=1
+{
+echo "START $(date) node=$(hostname) CUDA_VISIBLE=$CUDA_VISIBLE_DEVICES"
+echo "=== GPU smoke test ==="
+SMOKE_OK=0
+SMOKE_TIMEOUTS=(300 90 90)   # dot 1: du 300s cho "cold-start" dau job (import torch co the mat toi 185s
+                             # do dam phan driver mang CXI/Slingshot tren node); dot 2-3: fallback ngan hon
+for i in 0 1 2; do
+  attempt=$((i+1))
+  timeout ${SMOKE_TIMEOUTS[$i]} $PY -u -c "import torch;print('cuda?',torch.cuda.is_available());x=torch.randn(2000,2000).cuda();torch.cuda.synchronize();print('gpu OK',torch.cuda.get_device_name(0))"
+  rc=$?
+  if [ $rc -eq 0 ]; then SMOKE_OK=1; break; fi
+  echo "!! GPU smoke attempt $attempt FAILED (rc=$rc, timeout=${SMOKE_TIMEOUTS[$i]}s) -- known transient CUDA cold-start/CXI hang, retrying in 15s..."
+  sleep 15
+done
+if [ $SMOKE_OK -ne 1 ]; then
+  echo "!! GPU smoke test khong pass sau 3 lan thu -- co the do tranh chap MPS voi job khac tren node"
+  echo "   dung chung (sharedgpu), KHONG phai GPU hong. Van tiep tuc chay lenh training thuc te"
+  echo "   (co ngan sach walltime day du de cho qua tranh chap, khong bi gioi han timeout nhu smoke test)."
+fi
+
+echo "=== CE-only fine-tuning baseline (alpha=1.0, no KD) - cua so chinh 5.44s ==="
+echo "Muc dich: co lap dong gop cua KD khoi viec chi train them 50 epoch."
+echo "Dung CHUNG pretrained checkpoint (results/baselines_full_fixedwindow_round), CHUNG split/seed"
+echo "moi fold nhu collaborative_ensemble.py chinh (avg, alpha=0.5), CHI khac alpha=1.0"
+echo "(=> total_loss = 1.0*CE + 0.0*KD = CE-only fine-tuning, tuong duong naive + 50 epoch CE)."
+$PY -u training/collaborative_ensemble.py \
+    --data_path data/raw/benchmark \
+    --init_checkpoint_dir results/baselines_full_fixedwindow_round \
+    --n_subjects 35 \
+    --epochs 50 \
+    --batch_size 16 \
+    --alpha 1.0 \
+    --temperature 4.0 \
+    --distill_mode avg \
+    --t_start 0.14 \
+    --t_end 5.14 \
+    --seed 42 \
+    --save_dir results/ensemble_full_ce_baseline_fixedwindow_round
+rc=$?
+if [ $rc -ne 0 ]; then echo "!! collaborative_ensemble.py (CE baseline) FAILED (rc=$rc)"; exit 1; fi
+
+echo "DONE $(date)"
+} > $LOG 2>&1

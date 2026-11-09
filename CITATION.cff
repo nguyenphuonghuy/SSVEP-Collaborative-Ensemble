@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Harmonic-stacking multi-view ensemble for calibration-free SSVEP classification"
+authors:
+  - family-names: Duong
+    given-names: Thi Mai Thuong
+  - family-names: Nguyen
+    given-names: Phuong Huy
+version: 1.0.0
+date-released: 2026-11-09
+license: MIT
