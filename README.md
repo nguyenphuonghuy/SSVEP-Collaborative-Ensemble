@@ -81,6 +81,8 @@ Scripts that consume another script's output must be run after it (noted below).
 
 ## Citation
 
+Repository: https://github.com/nguyenphuonghuy/SSVEP-Harmonic-Ensemble
+
 See `CITATION.cff`. If you use this code, please cite the paper above.
 
 ## License
