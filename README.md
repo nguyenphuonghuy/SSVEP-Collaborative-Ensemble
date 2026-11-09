@@ -1,5 +1,7 @@
 # Harmonic-stacking multi-view ensemble for calibration-free SSVEP classification
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24075619.svg)](https://doi.org/10.5281/zenodo.24075619)
+
 Code for the paper *"Lightweight calibration-free SSVEP classification with a
 harmonic-stacking multi-view ensemble on embedded ARM processors"*
 (T. M. T. Duong, P. H. Nguyen; submitted to Biomedical Signal Processing and Control).
@@ -82,6 +84,8 @@ Scripts that consume another script's output must be run after it (noted below).
 ## Citation
 
 Repository: https://github.com/nguyenphuonghuy/SSVEP-Harmonic-Ensemble
+
+Archived on Zenodo: version 1.0.0, https://doi.org/10.5281/zenodo.24075619 (all versions: https://doi.org/10.5281/zenodo.24075618)
 
 See `CITATION.cff`. If you use this code, please cite the paper above.
 
