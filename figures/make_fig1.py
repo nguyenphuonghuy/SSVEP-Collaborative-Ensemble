@@ -1,178 +1,190 @@
-"""Figure 1: architecture of the multi-view ensemble (vector PDF).
+"""Figure 1: architecture of the multi-view ensemble.
 
-Run:  python make_fig1.py   ->  Figure_1.pdf
+Hand-built vector schematic (SVG, 1 unit = 1 pt, 183 mm double column).
+Group titles are 8 pt by choice (Elsevier artwork range); all other text 6-7 pt.
+Run:  python make_fig1.py   ->  Figure_1.svg, Figure_1.pdf (via rsvg-convert)
+
+Element ids follow the figure brief:
+  n:input, c:temporal / c:freq / c:spatial (branch containers), n:<branch>-<k>
+  (blocks), n:p1..n:p3 (branch probabilities), n:average, c:finetune, e:* edges.
 """
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Rectangle
+import shutil
+import subprocess
+from pathlib import Path
+from xml.sax.saxutils import escape
 
-plt.rcParams.update({
-    "font.family": "DejaVu Sans",
-    "font.size": 7.5,
-    "pdf.fonttype": 42,
-    "mathtext.fontset": "dejavusans",
-})
+HERE = Path(__file__).resolve().parent
+FAMILY = "Arial, 'Liberation Sans', Helvetica, sans-serif"
 
-# Colour-blind-safe (Okabe-Ito) branch colours
-C_TEMP = "#0072B2"   # blue
-C_FREQ = "#009E73"   # bluish green
-C_SPAT = "#D55E00"   # vermillion
-C_TRAIN = "#6A3D9A"  # purple (training-only)
-INK = "#222222"
-GREY = "#777777"
+# three type sizes only
+S_GROUP, S_TEXT, S_SMALL = 8.0, 7.0, 6.0
 
-fig = plt.figure(figsize=(7.2, 4.75))
-ax = fig.add_axes([0, 0, 1, 1])
-ax.set_xlim(0, 100)
-ax.set_ylim(0, 66)
-ax.axis("off")
+INK = "#1a1a1a"
+LINE = "#4d4d4d"       # outlines of generic blocks and connectors
+FRAME = "#8c8c8c"      # outline-only containers
+ACCENT = "#2a6fb0"     # the paper's new component (SSVEPFreqNet), same blue as Fig. 2
+ACCENT_FILL = "#e8f0f8"
+
+W, H = 518.7, 220.0    # 183 mm wide (double column)
+
+out = []
 
 
-def box(x, y, w, h, ec, fc="white", lw=1.0, ls="-", r=1.2, z=1):
-    p = FancyBboxPatch((x, y), w, h, boxstyle=f"round,pad=0,rounding_size={r}",
-                       ec=ec, fc=fc, lw=lw, ls=ls, zorder=z)
-    ax.add_patch(p)
-    return p
+def add(s):
+    out.append(s)
 
 
-def arrow(x0, y0, x1, y1, color=INK, ls="-", lw=1.0, style="-|>", ms=7, conn=None):
-    kw = dict(arrowstyle=style, mutation_scale=ms, color=color, lw=lw, ls=ls,
-              shrinkA=0, shrinkB=0, zorder=3)
-    if conn:
-        kw["connectionstyle"] = conn
-    ax.add_patch(FancyArrowPatch((x0, y0), (x1, y1), **kw))
+def rect(x, y, w, h, stroke=LINE, fill="#ffffff", sw=0.8, rx=2.0, dash=None):
+    d = f' stroke-dasharray="{dash}"' if dash else ""
+    add(f'<rect x="{x:.2f}" y="{y:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{rx}" '
+        f'fill="{fill}" stroke="{stroke}" stroke-width="{sw}"{d}/>')
 
 
-def light(c, a=0.10):
-    rgb = np.array(matplotlib.colors.to_rgb(c))
-    return tuple(1 - a * (1 - rgb))
+def text(x, y, s, size=S_TEXT, weight="regular", anchor="middle", fill=INK, raw=False):
+    body = s if raw else escape(s)
+    fw = ' font-weight="bold"' if weight == "bold" else ""
+    add(f'<text x="{x:.2f}" y="{y:.2f}" font-size="{size}"{fw} text-anchor="{anchor}" '
+        f'fill="{fill}">{body}</text>')
 
 
-# ---------------------------------------------------------------- input
-box(1, 22, 13.5, 15, INK)
-ax.text(7.75, 35.3, "EEG trial", ha="center", va="center", fontsize=8, weight="bold")
-rng = np.random.default_rng(3)
-t = np.linspace(0, 1, 200)
-for i in range(4):
-    yb = 32.8 - i * 1.25
-    sig = 0.45 * np.sin(2 * np.pi * 9 * t + i) + 0.25 * rng.standard_normal(200)
-    ax.plot(2.6 + 10.3 * t, yb + 0.5 * sig, lw=0.45, color=GREY)
-ax.text(7.75, 25.9, "9 channels × 1250\n(5.0 s, 250 Hz)", ha="center", va="center",
-        fontsize=6.6, linespacing=1.15)
-ax.text(7.75, 23.1, "z-normalized", ha="center", va="center", fontsize=6.2, color=GREY)
+def lines_in_box(cx, cy, rows):
+    """Centre a list of (string, size) rows vertically around cy."""
+    lh = [r[1] * 1.22 for r in rows]
+    y = cy - sum(lh) / 2
+    for (s, sz), h in zip(rows, lh):
+        y += h
+        text(cx, y - 0.28 * sz, s, size=sz)
 
-# ---------------------------------------------------------------- branches
-BX, BW, BH = 19.5, 45, 14.2
+
+def line(x0, y0, x1, y1, color=LINE, sw=0.9, arrow=False):
+    m = ' marker-end="url(#ah)"' if arrow else ""
+    add(f'<line x1="{x0:.2f}" y1="{y0:.2f}" x2="{x1:.2f}" y2="{y1:.2f}" stroke="{color}" '
+        f'stroke-width="{sw}"{m}/>')
+
+
+def step(x, y, n):
+    add(f'<circle cx="{x:.2f}" cy="{y:.2f}" r="4.6" fill="#ffffff" stroke="{INK}" stroke-width="0.6"/>')
+    text(x, y + 2.1, str(n), size=S_SMALL)
+
+
+# ------------------------------------------------------------------ geometry
+IN_X, IN_W = 4.0, 66.0
+FORK_X = 78.0
+CX, CW = 86.0, 258.0               # branch containers
+PAD = 7.0
+ROW_H, ROW_GAP, TOP = 58.0, 12.0, 12.0
+rows_y = [TOP + i * (ROW_H + ROW_GAP) for i in range(3)]
+row_c = [y + ROW_H / 2 + 3.0 for y in rows_y]   # centre line of the block row
+P_X, P_W, P_H = 364.0, 56.0, 26.0  # probability boxes
+MERGE_X = 432.0
+A_X, A_W = 442.0, W - 442.0 - 4.0  # averaging / decision
+mid = row_c[1]
+
+add(f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}pt" height="{H}pt" '
+    f'viewBox="0 0 {W} {H}" font-family="{FAMILY}">')
+add('<defs><marker id="ah" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5.5" '
+    f'markerHeight="5.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="{LINE}"/>'
+    '</marker></defs>')
+add(f'<rect x="0" y="0" width="{W}" height="{H}" fill="#ffffff"/>')
+
+# ------------------------------------------------------------------ input
+add('<g id="n:input">')
+rect(IN_X, mid - 30, IN_W, 60)
+lines_in_box(IN_X + IN_W / 2, mid, [("EEG trial", S_GROUP), ("9 channels × 1250", S_TEXT),
+                                     ("samples (5.0 s,", S_TEXT), ("250 Hz)", S_TEXT)])
+add('</g>')
+add('<g id="e:input-branches">')
+line(IN_X + IN_W, mid, FORK_X, mid)
+line(FORK_X, row_c[0], FORK_X, row_c[2])
+add(f'<circle cx="{FORK_X}" cy="{mid}" r="1.4" fill="{LINE}"/>')
+for c in row_c:
+    line(FORK_X, c, CX, c, arrow=True)
+add('</g>')
+
+# ------------------------------------------------------------------ branches
 branches = [
-    (40.5, C_TEMP, "Temporal CNN", "temporal view (EEGNet-style)",
-     ["Temporal conv\n1×25, 8 maps", "Depthwise spatial\nC×1, ×2", "Separable conv\n16 maps, pool"]),
-    (22.4, C_FREQ, "SSVEPFreqNet", "frequency view (harmonic stacking)",
-     None),
-    (4.3, C_SPAT, "Spatial-temporal CNN", "spatial-temporal view (TRCA-inspired)",
-     ["Spatial filter\nC×1, 8 virtual ch.", "Depthwise temporal\n1×25", "Conv 1×15\n16 maps, adapt. pool"]),
+    ("c:temporal", "Temporal CNN", False,
+     [["Temporal conv", "1×25, 8 maps"], ["Depthwise spatial", "C×1, ×2"],
+      ["Separable conv", "16 maps, pooling"]]),
+    ("c:freq", "SSVEPFreqNet", True,
+     [["|FFT|", "per channel"], ["Harmonic", "stacking, H = 5"],
+      ["Channel conv", "1×1, 8 maps"], ["Harmonic conv", "1×H, 16 maps"]]),
+    ("c:spatial", "Spatial-temporal CNN", False,
+     [["Spatial filter", "C×1, 8 virtual ch."], ["Depthwise temporal", "1×25"],
+      ["Conv 1×15", "16 maps, pooling"]]),
 ]
+BLK_H, GAP = 26.0, 9.0
+for (cid, title, accent, blocks), y, c in zip(branches, rows_y, row_c):
+    add(f'<g id="{cid}">')
+    rect(CX, y, CW, ROW_H, stroke=ACCENT if accent else FRAME,
+         fill=ACCENT_FILL if accent else "#ffffff", sw=1.1 if accent else 0.8, rx=3)
+    text(CX + PAD, y + 11.5, title, size=S_GROUP, weight="bold", anchor="start")
+    n = len(blocks)
+    bw = (CW - 2 * PAD - (n - 1) * GAP) / n
+    for k, (a, b) in enumerate(blocks):
+        bx = CX + PAD + k * (bw + GAP)
+        add(f'<g id="n:{cid[2:]}-{k + 1}">')
+        rect(bx, c - BLK_H / 2, bw, BLK_H, stroke=ACCENT if accent else LINE)
+        lines_in_box(bx + bw / 2, c, [(a, S_TEXT), (b, S_SMALL)])
+        add('</g>')
+        if k < n - 1:
+            line(bx + bw, c, bx + bw + GAP, c, arrow=True)
+    if accent:
+        # brackets: fixed operations vs learned layers
+        yb = c + BLK_H / 2 + 3.5
+        spans = [(CX + PAD, CX + PAD + 2 * bw + GAP, "fixed (known stimulation frequencies)"),
+                 (CX + PAD + 2 * (bw + GAP), CX + CW - PAD, "learned")]
+        for x0, x1, lab in spans:
+            add(f'<path d="M{x0:.2f},{yb - 1.5:.2f} V{yb:.2f} H{x1:.2f} V{yb - 1.5:.2f}" '
+                f'fill="none" stroke="{ACCENT}" stroke-width="0.6"/>')
+            text((x0 + x1) / 2, yb + 7.0, lab, size=S_SMALL)
+    add('</g>')
 
-centers = []
-for (y, col, name, sub, blocks) in branches:
-    box(BX, y, BW, BH, col, fc=light(col, 0.07), lw=1.1)
-    ax.text(BX + 1.4, y + BH - 1.9, name, ha="left", va="center", fontsize=8.2,
-            weight="bold", color=col)
-    ax.text(BX + 1.4, y + BH - 4.0, sub, ha="left", va="center", fontsize=6.4,
-            color=GREY, style="italic")
-    cy = y + 4.6
-    centers.append(y + BH / 2)
-    if blocks is not None:
-        bw, gap = 13.0, 1.2
-        for j, txt in enumerate(blocks):
-            bx = BX + 1.4 + j * (bw + gap)
-            box(bx, cy - 3.3, bw, 6.6, col, r=0.8, lw=0.8)
-            ax.text(bx + bw / 2, cy, txt, ha="center", va="center", fontsize=6.3,
-                    linespacing=1.2)
-            if j < 2:
-                arrow(bx + bw, cy, bx + bw + gap, cy, color=col, ms=5, lw=0.8)
+# ------------------------------------------------------------------ probabilities
+for k, c in enumerate(row_c, start=1):
+    line(CX + CW, c, P_X, c, arrow=True)
+    add(f'<g id="n:p{k}">')
+    rect(P_X, c - P_H / 2, P_W, P_H)
+    text(P_X + P_W / 2, c - 1.0,
+         f'softmax(<tspan font-style="italic">z</tspan><tspan font-size="{S_SMALL}" dy="1.6">{k}</tspan>'
+         f'<tspan dy="-1.6">)</tspan>', raw=True)
+    text(P_X + P_W / 2, c + 8.0, "40 classes", size=S_SMALL)
+    add('</g>')
 
-# SSVEPFreqNet internals: FFT -> harmonic stacking tensor -> learned convs
-y, col = branches[1][0], C_FREQ
-cy = y + 4.6
-# FFT block
-box(BX + 1.4, cy - 3.3, 7.6, 6.6, col, r=0.8, lw=0.8)
-ax.text(BX + 5.2, cy + 0.9, "|FFT|", ha="center", va="center", fontsize=6.6)
-ax.text(BX + 5.2, cy - 1.3, "per\nchannel", ha="center", va="center", fontsize=5.8, color=GREY)
-arrow(BX + 9.0, cy, BX + 12.6, cy, color=col, ms=5, lw=0.8)
-# stacking tensor icon (targets x harmonics), fixed operation
-sx, sy, cw, ch = BX + 12.8, cy - 2.4, 0.62, 0.95
-vals = rng.random((5, 14)) * 0.5
-vals[:, 6] = [1.0, 0.75, 0.55, 0.4, 0.3]
-for h in range(5):
-    for n in range(14):
-        ax.add_patch(Rectangle((sx + n * cw, sy + (4 - h) * ch), cw, ch,
-                               fc=matplotlib.colors.to_rgba(col, 0.15 + 0.85 * vals[h, n]),
-                               ec="white", lw=0.25, zorder=2))
-ax.text(sx + 7 * cw, sy + 5 * ch + 0.35, "harmonic stacking (fixed)", ha="center", va="bottom",
-        fontsize=5.6, color=col, weight="bold")
-ax.text(sx + 7 * cw, sy - 0.3, r"40 targets × 5 harmonics", ha="center", va="top",
-        fontsize=5.4, color=GREY)
-ex = sx + 14 * cw
-arrow(ex + 0.3, cy, ex + 4.4, cy, color=col, ms=5, lw=0.8)
-lx = ex + 4.4
-lw_ = BX + BW - 1.4 - lx
-box(lx, cy - 3.3, lw_, 6.6, col, r=0.8, lw=0.8)
-ax.text(lx + lw_ / 2, cy, "Channel conv 1×1\n→ harmonic conv\n1×H, 16 maps",
-        ha="center", va="center", fontsize=6.3, linespacing=1.2)
+# ------------------------------------------------------------------ averaging / decision
+add('<g id="e:p-average">')
+for c in row_c:
+    line(P_X + P_W, c, MERGE_X, c)
+line(MERGE_X, row_c[0], MERGE_X, row_c[2])
+add(f'<circle cx="{MERGE_X}" cy="{mid}" r="1.4" fill="{LINE}"/>')
+line(MERGE_X, mid, A_X, mid, arrow=True)
+add('</g>')
+add('<g id="n:average">')
+rect(A_X, mid - 30, A_W, 60)
+lines_in_box(A_X + A_W / 2, mid, [("Average of the three", S_TEXT), ("probability vectors", S_TEXT),
+                                   ("→ argmax", S_TEXT), ("→ target frequency", S_TEXT)])
+add('</g>')
 
-# input -> branches
-fork_x = 16.8
-ax.plot([14.5, fork_x], [29.5, 29.5], color=INK, lw=1.0, zorder=3)
-ax.plot([fork_x, fork_x], [centers[2], centers[0]], color=INK, lw=1.0, zorder=3)
-for c in centers:
-    arrow(fork_x, c, BX, c)
+# ------------------------------------------------------------------ optional fine-tuning (dashed = training only)
+fx0, fx1 = P_X - 6.0, P_X + P_W + 6.0
+fy0, fy1 = row_c[0] - P_H / 2 - 6.0, row_c[2] + P_H / 2 + 6.0
+add('<g id="c:finetune">')
+rect(fx0, fy0, fx1 - fx0, fy1 - fy0, stroke=INK, fill="none", sw=0.7, rx=3, dash="3,2")
+text((fx0 + fx1) / 2, fy0 - 12.5, "Optional collaborative", size=S_SMALL)
+text((fx0 + fx1) / 2, fy0 - 5.0, "fine-tuning (training only)", size=S_SMALL)
+add('</g>')
 
-# ---------------------------------------------------------------- logits
-LX, LW = 68.5, 10.5
-for (y, col, *_), c, k in zip(branches, centers, (1, 2, 3)):
-    box(LX, c - 3.0, LW, 6.0, col, lw=1.0)
-    ax.text(LX + LW / 2, c + 0.9, rf"$\mathrm{{softmax}}(z_{k})$", ha="center",
-            va="center", fontsize=7.2)
-    ax.text(LX + LW / 2, c - 1.4, "40 classes", ha="center", va="center", fontsize=5.9,
-            color=GREY)
-    arrow(BX + BW, c, LX, c, color=col)
+# ------------------------------------------------------------------ step numbers (main path)
+step(IN_X + IN_W / 2, mid - 37.0, 1)
+step((FORK_X + CX) / 2 + 1.0, row_c[0] - 10.0, 2)
+step(P_X + P_W / 2, fy1 + 9.0, 3)
+step(A_X + A_W / 2, mid - 37.0, 4)
 
-# ---------------------------------------------------------------- averaging / decision
-AX, AW = 83.5, 15.5
-box(AX, 21.5, AW, 16.5, INK, fc="#F4F4F4", lw=1.1)
-ax.text(AX + AW / 2, 35.4, "Inference", ha="center", va="center", fontsize=8, weight="bold")
-ax.text(AX + AW / 2, 30.6, "average the three\nprobability vectors", ha="center",
-        va="center", fontsize=6.5, linespacing=1.2)
-ax.text(AX + AW / 2, 26.3, r"$\hat{y}=\arg\max_n \ \bar{p}_n$",
-        ha="center", va="center", fontsize=7.0)
-ax.text(AX + AW / 2, 23.2, "→ target frequency", ha="center", va="center", fontsize=6.5)
-merge_x = 81.2
-for c in centers:
-    ax.plot([LX + LW, merge_x], [c, c], color=INK, lw=1.0, zorder=3)
-ax.plot([merge_x, merge_x], [centers[2], centers[0]], color=INK, lw=1.0, zorder=3)
-arrow(merge_x, centers[1], AX, centers[1])
+add('</svg>')
 
-# ---------------------------------------------------------------- optional training stage
-tx, ty, tw, th = 55.0, 56.0, 44.0, 9.0
-box(tx, ty, tw, th, C_TRAIN, fc=light(C_TRAIN, 0.05), ls=(0, (3, 2)), lw=0.9)
-ax.text(tx + 1.1, ty + 7.0, "Optional collaborative fine-tuning (training only)",
-        ha="left", va="center", fontsize=6.6, weight="bold", color=C_TRAIN)
-ax.text(tx + 1.1, ty + 4.3,
-        r"soft target $q_k$ = mean of the other two $\mathrm{softmax}(z_j/T)$, stop-gradient",
-        ha="left", va="center", fontsize=6.2, color=INK)
-ax.text(tx + 1.1, ty + 1.7,
-        r"$L^{(k)}=\alpha\,\mathrm{CE}+(1-\alpha)\,T^2\,\mathrm{KL}(q_k\,\|\,\mathrm{softmax}(z_k/T))$,  $\alpha$=0.5, $T$=4",
-        ha="left", va="center", fontsize=6.2, color=INK)
-arrow(LX + LW / 2, centers[0] + 3.0, LX + LW / 2, ty, color=C_TRAIN, ls=(0, (3, 2)),
-      style="<|-|>", ms=6, lw=0.9)
-
-# ---------------------------------------------------------------- legend
-ax.plot([20, 25], [1.3, 1.3], color=INK, lw=1.0)
-ax.text(25.8, 1.3, "inference path (deployed model)", va="center", fontsize=6.3)
-ax.plot([55, 60], [1.3, 1.3], color=C_TRAIN, lw=0.9, ls=(0, (3, 2)))
-ax.text(60.8, 1.3, "training only; inference cost unchanged", va="center", fontsize=6.3)
-
-fig.savefig("Figure_1.pdf")
-print("wrote Figure_1.pdf")
+svg = HERE / "Figure_1.svg"
+svg.write_text("\n".join(out), encoding="utf-8")
+print("wrote", svg.name)
+if shutil.which("rsvg-convert"):
+    subprocess.run(["rsvg-convert", "-d", "72", "-p", "72", "-f", "pdf", "-o", str(HERE / "Figure_1.pdf"), str(svg)], check=True)
+    print("wrote Figure_1.pdf")

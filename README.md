@@ -68,7 +68,7 @@ Scripts that consume another script's output must be run after it (noted below).
 | BETA alpha x T sensitivity | `table6.sh` (after `beta1.sh`) |
 | Parameters / MFLOPs | `python compute_flops.py` |
 | Embedded latency, resources, cross-platform accuracy | `pi4_latency/`, `zcu104_latency/` (see the scripts' headers) |
-| Figures | `cd figures && python make_fig2.py` (etc.) |
+| Figures | `cd figures && python make_fig1.py && python make_data_figs.py` (Fig. 1 needs `rsvg-convert` for the PDF) |
 
 ## Notes
 
