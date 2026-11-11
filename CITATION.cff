@@ -17,4 +17,7 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.24075619
     description: Version 1.0.0
+  - type: doi
+    value: 10.5281/zenodo.24128845
+    description: Version 1.1.0
 repository-code: "https://github.com/nguyenphuonghuy/SSVEP-Harmonic-Ensemble"

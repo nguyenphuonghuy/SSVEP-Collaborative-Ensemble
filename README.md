@@ -92,7 +92,7 @@ Scripts that consume another script's output must be run after it (noted below).
 
 Repository: https://github.com/nguyenphuonghuy/SSVEP-Harmonic-Ensemble
 
-Archived on Zenodo (all versions): https://doi.org/10.5281/zenodo.24075618. Version 1.0.0: https://doi.org/10.5281/zenodo.24075619. Version 1.1.0 adds the branch-combination, harmonic-stacking control, exact-DFT, and embedded latency/decision-agreement scripts used in the submitted manuscript.
+Archived on Zenodo (all versions): https://doi.org/10.5281/zenodo.24075618. Version 1.0.0: https://doi.org/10.5281/zenodo.24075619. Version 1.1.0 (https://doi.org/10.5281/zenodo.24128845) adds the branch-combination, harmonic-stacking control, exact-DFT, and embedded latency/decision-agreement scripts used in the submitted manuscript.
 
 See `CITATION.cff`. If you use this code, please cite the paper above.
 
