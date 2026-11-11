@@ -6,10 +6,10 @@ authors:
     given-names: Thi Mai Thuong
   - family-names: Nguyen
     given-names: Phuong Huy
-version: 1.0.0
-date-released: 2026-11-09
+version: 1.1.0
+date-released: 2026-11-11
 license: MIT
-doi: 10.5281/zenodo.24075619
+doi: 10.5281/zenodo.24075618
 identifiers:
   - type: doi
     value: 10.5281/zenodo.24075618

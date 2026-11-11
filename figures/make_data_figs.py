@@ -1,11 +1,12 @@
-"""Data figures for the BSPC manuscript (Figures 2, 3 and S1).
+"""Data figures for the BSPC manuscript (Figure 2 = accuracy vs window, Figure S1;
+the former four-branch removal figure is kept under _old/).
 
 One style for all three: Arial/Liberation Sans, 7 pt text in a single dark ink,
 one accent colour (blue) for the proposed model or its key branch, greys for
 everything else.
 
 Run:  python make_data_figs.py [--results-dir PATH]
-      -> Figure_2.pdf, Figure_3.pdf, Figure_S1.pdf (+ .svg)
+      -> Figure_2.pdf, Figure_S1.pdf (+ .svg)
 
 Figure S1 reads the per-subject LOSO results; Figures 2 and 3 use the summary
 values reported in the manuscript (Fig. 2: four-branch ablation; Fig. 3 / Table 5).
@@ -89,7 +90,7 @@ def figure_2():
     ax.set_xlim(-11, 3.5)
     ax.set_xticks([-10, -8, -6, -4, -2, 0, 2])
     ax.set_xlabel("Change in accuracy when the branch is removed (pp)")
-    save(fig, "Figure_2")
+    save(fig, "_old/Figure_2_branch_removal_4branch")
 
 
 # --------------------------------------------------------------------------- Figure 3
@@ -130,7 +131,7 @@ def figure_3():
     ax.set_ylim(0, 105)
     ax.set_yticks(range(0, 101, 20))
     ax.grid(axis="y", color=GRID, lw=0.5, zorder=0)
-    save(fig, "Figure_3")
+    save(fig, "Figure_2")
 
 
 # --------------------------------------------------------------------------- Figure S1

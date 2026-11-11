@@ -9,6 +9,7 @@ models/extractors/extractors.py
 Target: mỗi extractor ~6-7K params, competitive với EEGNet baseline
 """
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -252,7 +253,7 @@ class FreqDomainCNN(BaseExtractor):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BASELINE ABLATION: tach bach dong gop cua "harmonic stacking" (bieu dien)
-# khoi dong gop cua CNN co the hoc duoc (novelty ablation). Hai
+# khoi dong gop cua CNN co the hoc duoc (xem phan hoi Major Issue 3). Hai
 # lop duoi day co CUNG tien xu ly tan so voi FreqDomainCNN nhung thay 2 khoi
 # CNN (spatial_conv + class_conv) bang MOT lop tuyen tinh duy nhat.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -371,7 +372,7 @@ class HarmonicStackLinear(BaseExtractor):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ABLATION full-spectrum: doi chung
+# ABLATION R1-M5 (xem reviewer1.md, reviewer3.md R3-M4 lien quan): doi chung
 # "CNN tren toan pho" cho SSVEPFreqNet. Harmonic stacking chon TRUOC, co
 # dinh, khong hoc duoc, bien do tai dung cac bin hai cua 40 tan so muc tieu
 # da biet. Lop duoi day giu dung trieu ly FFT-bien-do + CNN hoc duoc ben tren
@@ -384,7 +385,7 @@ class HarmonicStackLinear(BaseExtractor):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class FullSpectrumCNN(BaseExtractor):
-    """Doi chung full-spectrum: FFT bien do toan dai 6-90Hz (khong chon bin hai) -> CNN."""
+    """Doi chung R1-M5: FFT bien do toan dai 6-90Hz (khong chon bin hai) -> CNN."""
 
     def __init__(
         self,
@@ -789,19 +790,88 @@ class SpatialTemporalCNN(BaseExtractor):
 # FACTORY & UTILS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 2 (reviewer controls, 2026-11): variants used only for ablations.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class FreqDomainCNNDFT(FreqDomainCNN):
+    """SSVEPFreqNet with the amplitude evaluated exactly at h*f_n by a direct
+    DFT projection (equivalent to unlimited zero-padding) instead of reading
+    the nearest FFT bin. Same layers and parameter count as SSVEPFreqNet."""
+
+    def __init__(self, n_channels=9, n_samples=1250, n_classes=40, sfreq=250,
+                 n_harmonics=5, dropout=0.3):
+        FreqDomainCNN.__init__(self, n_channels, n_samples, n_classes, sfreq, n_harmonics, dropout)
+        t = torch.arange(n_samples, dtype=torch.float32) / sfreq
+        f = torch.cat([self.target_freqs * h for h in range(1, n_harmonics + 1)])  # (H*40,)
+        ang = 2 * math.pi * f[:, None] * t[None, :]                                # (H*40, T)
+        self.register_buffer('dft_cos', torch.cos(ang))
+        self.register_buffer('dft_sin', torch.sin(ang))
+
+    def _get_harmonic_amplitudes(self, x):
+        if not hasattr(self, 'dft_cos'):   # during parent __init__ feature-dim probe
+            return FreqDomainCNN._get_harmonic_amplitudes(self, x)
+        re = torch.einsum('bct,ft->bcf', x, self.dft_cos)
+        im = torch.einsum('bct,ft->bcf', x, self.dft_sin)
+        amp = torch.sqrt(re ** 2 + im ** 2 + 1e-12)                                # (B, C, H*40)
+        B, C, _ = amp.shape
+        return amp.view(B, C, self.n_harmonics, -1).permute(0, 1, 3, 2)            # (B, C, 40, H)
+
+
+class FullSpectrumCNNMatched(FullSpectrumCNN):
+    """Full-spectrum control with the number of feature maps chosen so that the
+    total parameter count is as close as possible to SSVEPFreqNet's (26,400)
+    at the given window length."""
+    TARGET_PARAMS = 26400
+
+    def __init__(self, n_channels=9, n_samples=1250, n_classes=40, sfreq=250,
+                 low_hz=6.0, high_hz=90.0, dropout=0.3):
+        FullSpectrumCNN.__init__(self, n_channels, n_samples, n_classes, sfreq, low_hz, high_hz, dropout)
+        best = None
+        for m in range(4, 1025):
+            self._set_maps(m, dropout)
+            n = sum(p.numel() for p in self.parameters())
+            if best is None or abs(n - self.TARGET_PARAMS) < best[1]:
+                best = (m, n)
+            if n > self.TARGET_PARAMS:
+                break
+        self._set_maps(best[0], dropout)
+        self.n_maps = best[0]
+
+    def _set_maps(self, m, dropout):
+        self.freq_conv = nn.Sequential(
+            nn.Conv1d(8, m, kernel_size=9, stride=4, padding=4, bias=False),
+            nn.BatchNorm1d(m), nn.ELU(), nn.AvgPool1d(4), nn.Dropout(dropout))
+        self._feature_dim = self._compute_feature_dim()
+        self.classifier = nn.Linear(self._feature_dim, self.n_classes)
+
+
+def _freqnet_h(h):
+    def make(n_channels, n_samples, n_classes, **kw):
+        return FreqDomainCNN(n_channels, n_samples, n_classes, n_harmonics=h, **kw)
+    return make
+
+
 EXTRACTOR_REGISTRY = {
     'temporal_cnn': TemporalCNN,
     'freq_domain_cnn': FreqDomainCNN,
     'shallow_conv_net': ShallowConvNet,     # Ext3: thay FilterBankCNN
     'filter_bank_cnn': FilterBankCNN,       # Deprecated
     'spatial_temporal_cnn': SpatialTemporalCNN,
-    # Baseline ablation (novelty cua harmonic stacking)
+    # Baseline ablation cho Major Issue 3 (novelty cua harmonic stacking)
     'harmonic_amp_linear':   HarmonicAmpLinear,
     'harmonic_stack_linear': HarmonicStackLinear,
     'full_spectrum_cnn':     FullSpectrumCNN,
     # Nhanh mien tan so cho testbed thu hai (EEG cam xuc, DEAP/AMIGOS) -
     # thay FreqDomainCNN vi khong co tan so muc tieu de xep chong hai.
     'band_power_cnn': BandPowerCNN,
+    # Phase 2 reviewer controls
+    'freq_domain_cnn_dft': FreqDomainCNNDFT,
+    'full_spectrum_cnn_matched': FullSpectrumCNNMatched,
+    'freq_domain_cnn_h1': _freqnet_h(1),
+    'freq_domain_cnn_h2': _freqnet_h(2),
+    'freq_domain_cnn_h3': _freqnet_h(3),
+    'freq_domain_cnn_h4': _freqnet_h(4),
 }
 
 

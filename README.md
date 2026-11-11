@@ -1,6 +1,6 @@
 # Harmonic-stacking multi-view ensemble for calibration-free SSVEP classification
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24075619.svg)](https://doi.org/10.5281/zenodo.24075619)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24075618.svg)](https://doi.org/10.5281/zenodo.24075618)
 
 Code for the paper *"Lightweight calibration-free SSVEP classification with a
 harmonic-stacking multi-view ensemble on embedded ARM processors"*
@@ -53,7 +53,13 @@ Scripts that consume another script's output must be run after it (noted below).
 | Paper content | Script(s) |
 |---|---|
 | Per-extractor performance and complexity; fusion progression; main Benchmark results (5.0 s) | `full.sh` (or `round5s_freq.sh` then `round5s_ens.sh`) |
-| Four-branch ablation (branch removal), Benchmark | `table4.sh` (after `full.sh`); `round5s_ablA.sh`; `table4_4s.sh` |
+| Branch combinations (1/2/3 branches), all windows and BETA | `python evaluation/branch_combos.py` per window (after the baseline runs), then `python evaluation/phase1_stats.py` |
+| Four-branch ablation (branch removal; Supplementary S6) | `table4.sh` (after `full.sh`); `round5s_ablA.sh`; `table4_4s.sh` |
+| FBCCA on BETA | `python evaluation/fbcca_beta.py --t_end 2.14` |
+| Paired tests (ensemble vs branch, vs FBCCA), per-subject ITR, seed summaries | `python evaluation/phase1_stats.py` |
+| Harmonic-stacking controls: parameter-matched full-spectrum CNN, H = 1-4, exact-DFT variant (post hoc) | `python training/train_extractors.py --extractor {full_spectrum_cnn_matched,freq_domain_cnn_h1..h4,freq_domain_cnn_dft} --seed 42 ...`, then `python evaluation/phase2_stats.py` |
+| Training-free harmonic score | `python evaluation/harmonic_score_baseline.py` |
+| Ensemble with the exact-DFT frequency branch (post hoc) | `python evaluation/dft_ensemble.py` |
 | Harmonic-stacking ablation ladder and FBCCA, all windows | `novelty_baselines.sh`, `fbcca.sh`, `novelty_{1s,2s,4s}.sh` |
 | Full-spectrum CNN control | `fullspectrum_control.sh` |
 | Window-length effect (accuracy, ITR) | `1s.sh`, `2s.sh`, `4s.sh`, then `collab_retune_{1s,2s,4s}.sh` |
@@ -67,7 +73,8 @@ Scripts that consume another script's output must be run after it (noted below).
 | BETA: extractors, naive and collaborative ensemble, architecture check | `beta1.sh` then `beta2.sh`; `beta_collab_retune.sh` |
 | BETA alpha x T sensitivity | `table6.sh` (after `beta1.sh`) |
 | Parameters / MFLOPs | `python compute_flops.py` |
-| Embedded latency, resources, cross-platform accuracy | `pi4_latency/`, `zcu104_latency/` (see the scripts' headers) |
+| Embedded latency (ensemble, reference and cached FBCCA, 1/4 threads, median/p99), memory, and trial-level ARM/GPU agreement (Table 6, S7, S8) | `board_phase3/`: copy to the board with `models/`, fold checkpoints and exported trials, run `bash run_all.sh <python> 7 5`, then `python board_phase3/aggregate.py` on the host |
+| Earlier latency scripts | `pi4_latency/`, `zcu104_latency/` (see the scripts' headers) |
 | Figures | `cd figures && python make_fig1.py && python make_data_figs.py` (Fig. 1 needs `rsvg-convert` for the PDF) |
 
 ## Notes
@@ -85,7 +92,7 @@ Scripts that consume another script's output must be run after it (noted below).
 
 Repository: https://github.com/nguyenphuonghuy/SSVEP-Harmonic-Ensemble
 
-Archived on Zenodo: version 1.0.0, https://doi.org/10.5281/zenodo.24075619 (all versions: https://doi.org/10.5281/zenodo.24075618)
+Archived on Zenodo (all versions): https://doi.org/10.5281/zenodo.24075618. Version 1.0.0: https://doi.org/10.5281/zenodo.24075619. Version 1.1.0 adds the branch-combination, harmonic-stacking control, exact-DFT, and embedded latency/decision-agreement scripts used in the submitted manuscript.
 
 See `CITATION.cff`. If you use this code, please cite the paper above.
 

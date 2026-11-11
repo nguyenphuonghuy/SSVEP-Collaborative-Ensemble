@@ -254,7 +254,7 @@ def train_loso_beta(
 def main():
     parser = argparse.ArgumentParser(description='Train extractors on BETA dataset')
     parser.add_argument('--extractor', type=str, default='all',
-                        choices=BETA_EXTRACTORS + ['shallow_conv_net', 'all'])
+                        choices=BETA_EXTRACTORS + ['shallow_conv_net', 'freq_domain_cnn_dft', 'all'])
     parser.add_argument('--data_path', type=str, default='data/raw/beta')
     parser.add_argument('--n_subjects', type=int, default=70)
     parser.add_argument('--epochs', type=int, default=100)
